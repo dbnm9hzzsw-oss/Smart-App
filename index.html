@@ -1,114 +1,248 @@
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>My record | SMART Patient App</title>
-  <script src="https://cdn.jsdelivr.net/npm/fhirclient@3.0.1/bundle/fhir-client.js"></script>
-  <style>
-    body { font-family: system-ui, sans-serif; margin: 2rem; max-width: 40rem; line-height: 1.4; }
-    dt { margin-top: 0.8rem; font-weight: 600; }
-    dd { margin: 0.15rem 0 0; }
-    .error { color: #8a1f1f; }
-  </style>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>My record | SMART Patient App</title>
+<script src="https://cdn.jsdelivr.net/npm/fhirclient@3.0.1/bundle/fhir-client.js"></script>
+<style>
+:root { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; color:#17243b; background:#f5f7fb; }
+* { box-sizing:border-box; }
+body { margin:0; font-size:1rem; line-height:1.55; }
+main { max-width:52rem; margin:auto; padding:1.5rem 1rem 3rem; }
+h1 { font-size:clamp(1.7rem,5vw,2.2rem); line-height:1.2; margin:0; }
+h2 { font-size:1.3rem; margin:0 0 1rem; }
+.muted { color:#4b5a70; }
+.panel { background:white; border:1px solid #d9e1ec; border-radius:.8rem; padding:1.35rem; margin:1.2rem 0; }
+.identity { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:1rem 1.4rem; margin:0; }
+.full-width { grid-column:1/-1; }
+dt { font-size:.91rem; font-weight:650; color:#42546c; }
+dd { margin:.15rem 0 0; font-size:1.05rem; overflow-wrap:anywhere; }
+#name { font-size:1.4rem; font-weight:700; }
+.results { padding:0; margin:0; list-style:none; }
+.result { display:flex; justify-content:space-between; align-items:flex-start; gap:1rem; border-top:1px solid #e3e9f0; padding:1rem 0; }
+.result:first-child { border-top:0; padding-top:0; }
+.result:last-child { padding-bottom:0; }
+.result-label { font-weight:650; }
+.result-value { font-size:1.12rem; font-weight:700; text-align:right; overflow-wrap:anywhere; }
+.result-date { font-size:.88rem; color:#526077; text-align:right; }
+.status { padding:.85rem 1rem; border:1px solid #bfcbd9; background:#f6f9fc; border-radius:.5rem; }
+.error { border-color:#d5a6a6; background:#fff5f5; color:#7d1c1c; }
+.links { display:flex; gap:1rem; flex-wrap:wrap; }
+a { color:#174d94; text-underline-offset:.18rem; }
+a:focus-visible { outline:3px solid #1f66b1; outline-offset:3px; }
+[hidden] { display:none !important; }
+@media(max-width:400px) { main { padding:1rem .75rem 2rem; } .panel { padding:1rem; } .identity { grid-template-columns:1fr; } .full-width { grid-column:auto; } .result-value { font-size:1rem; } }
+</style>
 </head>
 <body>
-  <main>
-    <h1>My record</h1>
+<main>
+<header><h1>My record</h1><p class="muted">Your patient record from the SMART sandbox</p></header>
+<section id="signed-out" class="panel" aria-label="Sign in">
+<p>Sign in as the patient to see your record from the SMART sandbox.</p>
+<nav class="links" aria-label="Patient access"><a href="./launch.html">Sign in</a><a href="./health.html">Health check</a></nav>
+</section>
+<p id="loading" class="status" role="status" hidden>Loading your patient record…</p>
+<p id="error" class="status error" role="alert" hidden></p>
+<div id="record" hidden>
+<section class="panel" aria-labelledby="identity-title">
+<h2 id="identity-title">Patient identity</h2>
+<dl class="identity">
+<div class="full-width"><dt>Full name</dt><dd id="name">Not recorded</dd></div>
+<div><dt>Gender</dt><dd id="gender">Not recorded</dd></div>
+<div><dt>Birth date</dt><dd id="birth-date">Not recorded</dd></div>
+<div><dt>Age</dt><dd id="age">Not recorded</dd></div>
+</dl></section>
+<section class="panel" aria-labelledby="results-title">
+<h2 id="results-title">Recent results</h2>
+<p id="results-loading" class="status" role="status" hidden>Loading recent results…</p>
+<p id="results-empty" class="status" role="status" hidden>The sandbox patient has no matching observations.</p>
+<p id="results-error" class="status error" role="alert" hidden>We couldn't load recent results. Your patient information is still available.</p>
+<ul class="results" aria-label="Latest laboratory and vital-sign results">
+<li class="result"><span class="result-label">Height</span><div><div id="height-value" class="result-value">Not recorded</div><div id="height-date" class="result-date"></div></div></li>
+<li class="result"><span class="result-label">Blood pressure</span><div><div id="bp-value" class="result-value">Not recorded</div><div id="bp-date" class="result-date"></div></div></li>
+<li class="result"><span class="result-label">HDL</span><div><div id="hdl-value" class="result-value">Not recorded</div><div id="hdl-date" class="result-date"></div></div></li>
+<li class="result"><span class="result-label">LDL</span><div><div id="ldl-value" class="result-value">Not recorded</div><div id="ldl-date" class="result-date"></div></div></li>
+</ul></section><p><a href="./" id="sign-out">Sign out</a></p></div></main>
+<script>
+var params = new URLSearchParams(location.search);
+var cameBackFromAuth = params.has("code") || params.has("error") || params.has("state");
+var loincSystem = "http://loinc.org";
+var codes = ["8302-2", "85354-9", "8480-6", "8462-4", "2085-9", "13457-7"];
 
-    <section id="signed-out">
-      <p>Sign in as the patient to see your record from the SMART sandbox.</p>
-      <ul>
-        <li><a href="./launch.html">Sign in</a></li>
-        <li><a href="./health.html">Health check</a></li>
-      </ul>
-    </section>
+// Finish the SMART redirect and read Patient before requesting Observations.
+// The student sees the patient's identity as soon as Patient is returned.
+FHIR.oauth2.ready().then(function(client) {
+  document.getElementById("signed-out").hidden = true;
+  document.getElementById("loading").hidden = false;
+  return client.patient.read().then(function(patient) {
+    showPatient(patient);
+    document.getElementById("loading").hidden = true;
+    document.getElementById("results-loading").hidden = false;
+    return loadObservations(client, client.patient.id || patient.id);
+  });
+}).catch(function() {
+  document.getElementById("loading").hidden = true;
+  if (!document.getElementById("record").hidden) {
+    document.getElementById("results-loading").hidden = true;
+    document.getElementById("results-error").hidden = false;
+  } else if (cameBackFromAuth) {
+    showError("We couldn't open your patient record. Please sign in again.");
+  } else {
+    document.getElementById("signed-out").hidden = false;
+  }
+});
 
-    <section id="record" hidden>
-      <dl>
-        <dt>Name</dt>
-        <dd id="name"></dd>
-        <dt>Gender</dt>
-        <dd id="gender"></dd>
-        <dt>Birth date</dt>
-        <dd id="birth-date"></dd>
-        <dt>Age</dt>
-        <dd id="age"></dd>
-      </dl>
-      <p><a href="./" id="sign-out">Sign out</a></p>
-    </section>
+document.getElementById("sign-out").addEventListener("click", function(event) {
+  event.preventDefault();
+  sessionStorage.clear();
+  location.href = "./";
+});
 
-    <p id="error" class="error" hidden></p>
-  </main>
-  <script>
-    var params = new URLSearchParams(location.search);
-    var cameBackFromAuth = params.has("code") || params.has("error") || params.has("state");
+// Read Patient.name, gender and birthDate and display identity first.
+// The student still sees these fields if the Observation search fails.
+function showPatient(patient) {
+  document.getElementById("signed-out").hidden = true;
+  document.getElementById("record").hidden = false;
+  document.getElementById("name").textContent = formatName(patient);
+  document.getElementById("gender").textContent = patient.gender || "Not recorded";
+  document.getElementById("birth-date").textContent = patient.birthDate || "Not recorded";
+  document.getElementById("age").textContent = formatAge(patient.birthDate);
+}
 
-    // ready() finishes the redirect: it trades the code for a token and
-    // restores that session on later visits. It rejects when nobody is signed in.
-    FHIR.oauth2.ready()
-      .then(function (client) {
-        return client.patient.read();
-      })
-      .then(showPatient)
-      .catch(function (error) {
-        if (cameBackFromAuth) {
-          showError(error);
-        }
-      });
+// Display plain-language text when Patient or sign-in cannot load.
+function showError(message) {
+  var node = document.getElementById("error");
+  node.hidden = false;
+  node.textContent = message;
+}
 
-    document.getElementById("sign-out").addEventListener("click", function (event) {
-      event.preventDefault();
-      sessionStorage.clear();
-      location.href = "./";
+// Read the list of Patient.name values, preferring the official name.
+// Missing given/family fields display a fallback rather than breaking.
+function formatName(patient) {
+  var names = Array.isArray(patient.name) ? patient.name : [];
+  var name = names.find(function(item) { return item && item.use === "official"; }) || names.find(Boolean);
+  if (!name) return "Name not recorded";
+  if (name.text) return name.text;
+  var given = Array.isArray(name.given) ? name.given.filter(Boolean).join(" ") : "";
+  return (given + " " + (name.family || "")).trim() || "Name not recorded";
+}
+
+// Read Patient.birthDate and calculate today's age when the date is valid.
+// Missing or invalid dates display "Not recorded".
+function formatAge(birthDate) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(birthDate || "")) return "Not recorded";
+  var date = new Date(birthDate + "T12:00:00");
+  if (Number.isNaN(date.getTime())) return "Not recorded";
+  var today = new Date();
+  var age = today.getFullYear() - date.getFullYear();
+  if (today.getMonth() < date.getMonth() ||
+      (today.getMonth() === date.getMonth() && today.getDate() < date.getDate())) age--;
+  return age >= 0 ? age + " years" : "Not recorded";
+}
+
+// Request Observation only for the authorized patient and six LOINC codes.
+// Follow Bundle next links to find the latest data; students see four rows.
+async function loadObservations(client, patientId) {
+  if (!patientId) throw new Error("No authorized patient ID.");
+  var entries = [];
+  var next = "Observation?patient=" + encodeURIComponent(patientId)
+    + "&code=" + encodeURIComponent(codes.map(function(code) { return loincSystem + "|" + code; }).join(","))
+    + "&_count=100";
+  var visited = new Set();
+  while (next && !visited.has(next)) {
+    visited.add(next);
+    var bundle = await client.request(next);
+    if (!bundle || bundle.resourceType !== "Bundle") throw new Error("Invalid Observation response.");
+    (bundle.entry || []).forEach(function(entry) {
+      if (entry.resource && entry.resource.resourceType === "Observation") entries.push(entry.resource);
     });
+    var link = (bundle.link || []).find(function(item) { return item.relation === "next"; });
+    next = link && link.url ? link.url : null;
+  }
+  document.getElementById("results-loading").hidden = true;
+  document.getElementById("results-empty").hidden = entries.length !== 0;
+  renderObservations(entries);
+}
 
-    function showPatient(patient) {
-      document.getElementById("signed-out").hidden = true;
-      document.getElementById("record").hidden = false;
-      document.getElementById("name").textContent = formatName(patient);
-      document.getElementById("gender").textContent = patient.gender || "Not recorded";
-      document.getElementById("birth-date").textContent = patient.birthDate || "Not recorded";
-      document.getElementById("age").textContent = formatAge(patient.birthDate);
-    }
+// Read Observation.code.coding to match an exact LOINC code, including BP components.
+function hasCode(observation, code) {
+  return !!(observation.code && Array.isArray(observation.code.coding) &&
+    observation.code.coding.some(function(coding) { return coding.system === loincSystem && coding.code === code; }));
+}
 
-    function showError(error) {
-      var node = document.getElementById("error");
-      node.hidden = false;
-      node.textContent = error && error.message ? error.message : String(error);
-    }
+// Read effectiveDateTime or issued (also effectivePeriod.start when available).
+// The student sees a recorded date if the Observation has one.
+function resultDate(observation) {
+  return observation.effectiveDateTime ||
+    (observation.effectivePeriod && observation.effectivePeriod.start) ||
+    observation.issued || "";
+}
 
-    // FHIR Patient.name is a list. Prefer the official name, then the first one.
-    // given and family are optional, so don't read them without checking.
-    function formatName(patient) {
-      var names = Array.isArray(patient.name) ? patient.name : [];
-      var name = names.filter(function (item) { return item.use === "official"; })[0] || names[0];
-      if (!name) {
-        return "Name not recorded";
-      }
-      if (name.text) {
-        return name.text;
-      }
-      var given = Array.isArray(name.given) ? name.given.join(" ") : "";
-      var family = name.family || "";
-      return (given + " " + family).trim() || "Name not recorded";
-    }
+// Pick the most recent Observation by date, not server ordering.
+function latest(items) {
+  return items.slice().sort(function(a, b) {
+    return (Date.parse(resultDate(b)) || 0) - (Date.parse(resultDate(a)) || 0);
+  })[0];
+}
 
-    function formatAge(birthDate) {
-      if (!birthDate) {
-        return "Not recorded";
-      }
-      var parts = birthDate.split("-");
-      var year = Number(parts[0]);
-      var month = Number(parts[1] || 1) - 1;
-      var day = Number(parts[2] || 1);
-      var today = new Date();
-      var age = today.getFullYear() - year;
-      if (today.getMonth() < month || (today.getMonth() === month && today.getDate() < day)) {
-        age -= 1;
-      }
-      return age + " years";
-    }
-  </script>
+// Read valueQuantity.value and valueQuantity.unit, falling back to UCUM code.
+// Missing numeric values show "Not recorded" in the result row.
+function quantityText(quantity) {
+  if (!quantity || typeof quantity.value !== "number" || !Number.isFinite(quantity.value)) return "";
+  return String(quantity.value) + ((quantity.unit || quantity.code) ? " " + (quantity.unit || quantity.code) : "");
+}
+
+// Format the Observation's date for the caption beneath the result.
+// If the date cannot be parsed, the caption remains empty.
+function dateText(observation) {
+  if (!observation) return "";
+  var value = resultDate(observation);
+  if (!value || Number.isNaN(Date.parse(value))) return "";
+  return "Recorded " + new Intl.DateTimeFormat(undefined,
+    {year:"numeric", month:"short", day:"numeric", timeZone:"UTC"})
+    .format(new Date(value.slice(0,10) + "T12:00:00Z"));
+}
+
+// Place the valueQuantity and date in a patient-facing labeled row.
+// When the value is missing, the row says "Not recorded".
+function writeRow(prefix, value, observation) {
+  document.getElementById(prefix + "-value").textContent = value || "Not recorded";
+  document.getElementById(prefix + "-date").textContent = value ? dateText(observation) : "";
+}
+
+// Read systolic and diastolic from panel.component.valueQuantity first.
+// Fall back to separate Observations and show a combined systolic/diastolic unit.
+function bloodPressure(entries) {
+  var complete = entries.filter(function(item) { return hasCode(item, "85354-9"); }).map(function(item) {
+    var parts = Array.isArray(item.component) ? item.component : [];
+    var sys = parts.find(function(part) { return hasCode(part, "8480-6"); });
+    var dia = parts.find(function(part) { return hasCode(part, "8462-4"); });
+    return {item:item, sys:sys && sys.valueQuantity, dia:dia && dia.valueQuantity};
+  }).filter(function(item) { return quantityText(item.sys) && quantityText(item.dia); });
+  var panel = latest(complete.map(function(item) { return item.item; }));
+  if (panel) {
+    var reading = complete.find(function(item) { return item.item === panel; });
+    var unit = reading.sys.unit || reading.sys.code || reading.dia.unit || reading.dia.code || "";
+    return {text:reading.sys.value + "/" + reading.dia.value + (unit ? " " + unit : ""), observation:panel};
+  }
+  var sys = latest(entries.filter(function(item) { return hasCode(item, "8480-6") && quantityText(item.valueQuantity); }));
+  var dia = latest(entries.filter(function(item) { return hasCode(item, "8462-4") && quantityText(item.valueQuantity); }));
+  if (!sys || !dia) return {text:"", observation:null};
+  var unit = sys.valueQuantity.unit || sys.valueQuantity.code || dia.valueQuantity.unit || dia.valueQuantity.code || "";
+  return {text:sys.valueQuantity.value + "/" + dia.valueQuantity.value + (unit ? " " + unit : ""), observation:latest([sys,dia])};
+}
+
+// Read each Observation's LOINC code, latest date and valueQuantity.
+// Show Height, HDL, LDL and the preferred blood pressure result.
+function renderObservations(entries) {
+  [["height","8302-2"],["hdl","2085-9"],["ldl","13457-7"]].forEach(function(pair) {
+    var observation = latest(entries.filter(function(item) { return hasCode(item,pair[1]); }));
+    writeRow(pair[0], observation ? quantityText(observation.valueQuantity) : "", observation);
+  });
+  var bp = bloodPressure(entries);
+  writeRow("bp",bp.text,bp.observation);
+}
+</script>
 </body>
 </html>
